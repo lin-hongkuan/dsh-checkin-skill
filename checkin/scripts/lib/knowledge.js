@@ -28,6 +28,15 @@ export const PLATFORMS = {
       '或：登录 f.wps.cn 后复制完整 Cookie（含 wps_sid / kso_sid）交给 agent（wps import-cookie）。',
     ],
   },
+  xiaoqiandao: {
+    label: '小小签到 (xiaoqiandao)',
+    kind: 'web+miniprogram',
+    loginUrl: 'https://m.xiaoqiandao.com/',
+    tokenHow: [
+      '推荐：node checkin.mjs xiaoqiandao login-qr 出微信扫码二维码 → 扫码 → node checkin.mjs xiaoqiandao login-poll 自动拿 access_token。',
+      '签到：node checkin.mjs xiaoqiandao sign --url "https://m.xiaoqiandao.com/?cid=..."（普通/会议）；位置签到用 web-sign --lat --lng。',
+    ],
+  },
   web: {
     label: '通用网页签到表单',
     kind: 'web',

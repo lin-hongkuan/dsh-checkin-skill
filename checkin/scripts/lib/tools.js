@@ -68,7 +68,7 @@ export function buildTools({ ctx, config }) {
     },
     async (args) => {
       let status = {};
-      for (const p of ['qun100', 'ketangpai', 'wps']) {
+      for (const p of ['qun100', 'ketangpai', 'wps', 'xiaoqiandao']) {
         if (p === 'wps') {
           const jar = await getGrant(ctx, 'wps');
           status[p] = { configured: Array.isArray(jar) && jar.length > 0, detail: Array.isArray(jar) ? `${jar.length} 条 Cookie` : '未登录' };

@@ -11,6 +11,7 @@
 | 群报数 qun100 | 开放接口（微信扫码登录 → 自动定位 → 提交 → 回查） |
 | 课堂派 ketangpai | 开放接口（全课程待签到巡检 / 签入签出两段 / GPS 坐标） |
 | WPS 表单 | 浏览器 CDP（自动读取打卡围栏中心、GCJ-02 反算、注入虚拟定位） |
+| 小小签到 xiaoqiandao | 微信扫码登录 + H5 接口签到（位置签到走浏览器注入定位） |
 | 通用网页表单 | 自动识别姓名/学号输入框 + 虚拟定位 + 提交 + 截图 |
 | 微信小程序 / App | 抓包后用通用接口回放（`{{lat}}/{{lng}}/{{student}}/{{ts}}` 模板） |
 
@@ -83,6 +84,13 @@ node $c ketangpai sign
 node $c wps     locate  --form-url "https://f.wps.cn/ksform/cw/w/XXXX"
 node $c wps     sign    --form-url "..." --name 张三 --student-id 20230000
 node $c web     --url "https://..." --name 张三 --student-id 20230000
+
+# 小小签到（微信小程序型，H5 接口 + 扫码登录）
+node $c xiaoqiandao login-qr
+node $c xiaoqiandao login-poll
+node $c xiaoqiandao list
+node $c xiaoqiandao detail --url "https://m.xiaoqiandao.com/detail?cid=<24位hex>"
+node $c xiaoqiandao sign   --url "https://m.xiaoqiandao.com/detail?cid=<24位hex>"
 ```
 
 命令分组：`doctor | guide | token | geo | browser | qun100 | ketangpai | wps | web | api | sign`。

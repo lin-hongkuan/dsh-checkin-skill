@@ -22,6 +22,8 @@ import { detachAll, launchChrome, connectFirstPage, getStorage, getCookies, find
 import { setToken, setGrant, getToken, getGrant, mask } from './lib/creds.js';
 import { sleep } from './lib/util.js';
 import * as qun from './lib/qun100.js';
+import * as xqd from './lib/xiaoqiandao.js';
+import { runWebSign } from './lib/webform.js';
 
 const GROUPS = {
   guide: 'checkin_guide',
@@ -82,7 +84,7 @@ function parseFlags(tokens) {
 function printUsage() {
   console.error(
     'checkin <group> [action] [--flags]\n' +
-      'groups: doctor | guide | token | geo | browser | qun100 | ketangpai | wps | web | api | sign\n' +
+      'groups: doctor | guide | token | geo | browser | qun100 | ketangpai | wps | xiaoqiandao | web | api | sign\n' +
       'example: checkin qun100 sign --url "<link>" --student 20230000\n' +
       '         checkin token login --platform ketangpai',
   );
@@ -164,7 +166,7 @@ async function doDoctor() {
   checks.push({ name: 'node', ok: major >= 22, detail: `${process.version}（需要 >= 22 才有内置 WebSocket）` });
   const chrome = findChrome();
   checks.push({ name: 'chrome', ok: !!chrome, detail: chrome || '未找到 Chrome/Edge（浏览器类功能不可用）' });
-  for (const pl of ['qun100', 'ketangpai', 'wps']) {
+  for (const pl of ['qun100', 'ketangpai', 'wps', 'xiaoqiandao']) {
     if (pl === 'wps') {
       const jar = await getGrant(null, 'wps');
       checks.push({ name: 'token:' + pl, ok: Array.isArray(jar) && jar.length > 0, detail: Array.isArray(jar) && jar.length ? `${jar.length} 条 Cookie` : '未登录' });
@@ -173,7 +175,7 @@ async function doDoctor() {
       checks.push({ name: 'token:' + pl, ok: !!t, detail: t ? mask(t) : '未登录' });
     }
   }
-  const nets = { qun100: 'https://form.qun100.com/', ketangpai: 'https://openapiv5.ketangpai.com/', wps: 'https://f-api.wps.cn/' };
+  const nets = { qun100: 'https://form.qun100.com/', ketangpai: 'https://openapiv5.ketangpai.com/', wps: 'https://f-api.wps.cn/', xiaoqiandao: 'https://m.xiaoqiandao.com/' };
   for (const [k, u] of Object.entries(nets)) {
     try {
       const r = await fetch(u, { signal: AbortSignal.timeout(6000) });
@@ -184,6 +186,102 @@ async function doDoctor() {
   }
   const okAll = checks.filter((c) => c.name === 'node' || c.name === 'chrome').every((c) => c.ok);
   return { ok: okAll, checks, summary: '自检：\n' + checks.map((c) => `${c.ok ? '✅' : '⚠️'} ${c.name}：${c.detail}`).join('\n') };
+}
+
+async function doXiaoqiandao(action, args) {
+  const act = (action || 'guide').replace(/-/g, '_');
+  if (act === 'guide' || act === '') {
+    return {
+      ok: true,
+      summary: [
+        '小小签到(xiaoqiandao) 玩法（分享链接形如 https://m.xiaoqiandao.com/?cid=123...）：',
+        '1) 登录：xiaoqiandao login-qr → 微信扫码 → xiaoqiandao login-poll',
+        '2) 查看：xiaoqiandao detail --url "<分享链接>"（或 list 看自己的签到）',
+        '3) 签到（普通/会议）：xiaoqiandao sign --url "<分享链接>"，再 verify 复核',
+        '4) 位置签到：xiaoqiandao web-sign --url "<分享链接>" --lat .. --lng ..（浏览器注入定位）',
+        '5) 未知变体：xiaoqiandao capture --url "<分享链接>" 抓 /xcx/* 接口后用 api 回放',
+      ].join('\n'),
+    };
+  }
+  if (act === 'login_qr' || act === 'login') {
+    const q = await xqd.loginQr();
+    await setGrant(null, 'xiaoqiandao-qr', { qrToken: q.qrToken, qrcode: q.qrcode, createdAt: Date.now() });
+    return { ok: true, mode: 'qr', qrcode: q.qrcode, summary: `请用微信扫码登录小小签到；扫码完成后运行：xiaoqiandao login-poll\n二维码：${q.qrcode || '(接口未返回)'}` };
+  }
+  if (act === 'login_poll') {
+    const g = await getGrant(null, 'xiaoqiandao-qr');
+    const qrToken = args.qrToken || args.token || (g && g.qrToken);
+    const r = await xqd.loginPoll(qrToken, { timeoutMs: Number(args.timeoutMs) || 150000 });
+    await setToken(null, 'xiaoqiandao', r.token);
+    return { ok: true, masked: mask(r.token), summary: `小小签到登录成功（${mask(r.token)}）` };
+  }
+  if (act === 'detail') {
+    const cid = xqd.parseCid(args.url || args.cid);
+    const token = args.token || (await getToken(null, 'xiaoqiandao'));
+    const d = await xqd.detail(cid, { token });
+    const s = xqd.summarizeDetail(cid, d);
+    return { ok: true, ...s, summary: `小小签到：${s.title || ''}\ncid=${cid} 类型=${s.templateName} 需定位=${s.needLocation ? '是' : '否'}${s.range > 0 ? `（电子围栏 ${s.range} 米）` : ''}${s.geoFillField ? ' [地理位置字段]' : ''}\n已签到=${s.signedNow ? '是' : s.hasCheckedCount > 0 ? `${s.hasCheckedCount}/${s.limit}` : '否'} 已结束=${s.ended ? '是' : '否'} 可签时段=${s.inWindow ? '是' : '否'}\n时间：${s.startDate || '-'} ~ ${s.endDate || '-'}` };
+  }
+  if (act === 'list') {
+    const token = args.token || (await getToken(null, 'xiaoqiandao'));
+    if (!token) return { ok: false, needsToken: true, summary: '尚未登录小小签到：先 xiaoqiandao login-qr 扫码登录。' };
+    const rows = await xqd.list({ token, keyword: args.keyword, count: Number(args.count) || 20 });
+    return { ok: true, items: rows, summary: rows.length ? rows.map((r) => `${r.hasCheck ? '✅' : '⬜'} ${r.title}  ${r.cid}${r.isEnd ? ' (已结束)' : ''}`).join('\n') : '没有找到签到活动' };
+  }
+  if (act === 'verify') {
+    const cid = xqd.parseCid(args.url || args.cid);
+    const token = args.token || (await getToken(null, 'xiaoqiandao'));
+    const d = await xqd.detail(cid, { token });
+    const s = xqd.summarizeDetail(cid, d);
+    return { ok: true, ...s, summary: `${s.title || ''}：${s.hasChecked ? '✅ 已签到' : '❌ 未签到'}${s.isEnd ? '（已结束）' : ''}` };
+  }
+  if (act === 'sign') {
+    const token = args.token || (await getToken(null, 'xiaoqiandao'));
+    if (!token) return { ok: false, needsToken: true, summary: '尚未登录小小签到：先 xiaoqiandao login-qr 扫码登录。' };
+    const cid = xqd.parseCid(args.url || args.cid);
+    const d = await xqd.detail(cid, { token });
+    const s = xqd.summarizeDetail(cid, d);
+    if (s.signedNow) return { ok: true, alreadySigned: true, summary: `ℹ️ 已签到（${s.hasCheckedCount}/${s.limit}），无需重复` };
+    if (s.ended) return { ok: false, code: 'ENDED', summary: '签到已结束' };
+    if (s.scanRequired) return { ok: false, code: 'NEED_SCAN', summary: '该签到需要扫码参与，只能用小程序/现场扫码。' };
+    if (s.reqToken) return { ok: false, code: 'NEED_TOKEN', summary: '该签到需要口令后才能加入。' };
+    if (s.wifiRequired) return { ok: false, code: 'NEED_WIFI', summary: '该签到需要连接指定 WiFi，需在手机端。' };
+    const hasCoords = Number.isFinite(Number(args.lat)) && Number.isFinite(Number(args.lng));
+    if (s.geoFence && !s.geoFillField && !hasCoords) {
+      return { ok: false, code: 'NEED_MINIPROGRAM', summary: '该签到使用电子围栏定位，H5 端无法提交。请：①用小程序签到；②或 xiaoqiandao capture 抓小程序请求后用 api 回放；③如确知坐标可加 --lat/--lng 尝试。' };
+    }
+    if (s.geoFillField && !hasCoords) {
+      return { ok: false, code: 'NEED_LOCATION', summary: '该签到需要填写地理位置，请给 --lat/--lng（可先 geo geocode 一个地点）。' };
+    }
+    try {
+      const r = await xqd.submit(cid, { token, lat: args.lat, lng: args.lng, address: args.address, detailData: d, joinFirst: s.regRequired });
+      const rd = r.data || {};
+      return { ok: true, strategy: r.strategy, data: rd, summary: `✅ 小小签到成功（${r.strategy}）${rd.count != null ? `，累计 ${rd.count} 次` : ''}${rd.rank != null ? `，排名 ${rd.rank}` : ''}（cid=${cid}）` };
+    } catch (e) {
+      return { ok: false, code: e.code || 'SIGN_FAILED', message: e.message, summary: '小小签到提交失败：' + (e.message || e) };
+    }
+  }
+  if (act === 'web_sign') {
+    const r = await runWebSign({
+      url: args.url,
+      name: args.name,
+      studentId: args.studentId,
+      place: args.place,
+      lat: args.lat,
+      lng: args.lng,
+      headless: args.headless === true,
+      submitPattern: args.submitPattern || '签到|打卡|立即签到|确认签到|提交',
+      successKeywords: ['签到成功', '打卡成功', '已签到', '提交成功', '签到完成'],
+      alreadyKeywords: ['已签到', '今日已签到', '已完成', '不能重复'],
+      chromePath: args.chromePath,
+    });
+    return { ...r, summary: `${r.ok ? '✅' : '❌'} 小小签到(浏览器)：${r.message}${r.screenshot ? '\n截图：' + r.screenshot : ''}` };
+  }
+  if (act === 'capture') {
+    const r = await xqd.capture(args.url, { waitMs: Number(args.waitMs) || 8000 });
+    return { ok: true, ...r, summary: `抓包 ${r.endpoints.length} 条 /xcx/* 请求：\n` + r.endpoints.map((x) => `${x.method} ${x.url}`).slice(0, 30).join('\n') + '\n可用 checkin.mjs api 回放。' };
+  }
+  return { ok: false, summary: `未知动作 ${action}（可用：guide/login-qr/login-poll/detail/sign/web-sign/capture）` };
 }
 
 async function main() {
@@ -203,6 +301,21 @@ async function main() {
     const result = await doDoctor();
     process.stdout.write(JSON.stringify(result, null, 2) + '\n');
     setTimeout(() => process.exit(result.ok ? 0 : 1), 250);
+    return;
+  }
+
+  if (group === 'xiaoqiandao') {
+    const xrest = argv.slice(1);
+    const xargs = parseFlags(xrest);
+    const xact = (xrest.find((t) => !t.startsWith('--')) || '').replace(/-/g, '_');
+    let result;
+    try {
+      result = await doXiaoqiandao(xact, xargs);
+    } catch (e) {
+      result = { ok: false, error: { code: e.code || 'ERROR', message: e.message }, summary: '小小签到出错：' + (e.message || e) };
+    }
+    process.stdout.write(JSON.stringify(result, null, 2) + '\n');
+    setTimeout(() => process.exit(result && result.ok === false ? 1 : 0), 250);
     return;
   }
 

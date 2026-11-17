@@ -97,6 +97,20 @@ node checkin.mjs wps import-cookie --cookies-text "wps_sid=...; kso_sid=..."
 ```
 自动取打卡围栏中心并反算 WGS84 注入，**无需经纬度**；成功返回截图。
 
+**小小签到 (xiaoqiandao)**
+> 分享链接形如 `https://m.xiaoqiandao.com/detail?cid=<24位hex>`。JSON 接口在 `api-xcx.qunsou.co`（不是 m 域名）；走微信扫码登录 + 接口签到。
+```powershell
+node checkin.mjs xiaoqiandao login-qr                 # 出微信扫码二维码
+node checkin.mjs xiaoqiandao login-poll               # 扫码后自动拿 access_token
+node checkin.mjs xiaoqiandao list                     # 我参与/可签的签到（cid + 是否已签）
+node checkin.mjs xiaoqiandao detail --url "<分享链接>" # 标题/时间/是否需定位/是否已签
+node checkin.mjs xiaoqiandao sign   --url "<分享链接>" [--lat .. --lng ..]  # 普通/会议/地理位置字段签到
+node checkin.mjs xiaoqiandao verify --url "<分享链接>" # 复核是否已签
+```
+- **电子围栏(locations)** 的签到：H5 端不允许提交（官方客户端直接拦截），`sign` 会返回 `NEED_MINIPROGRAM` —— 用小程序签到，或 `xiaoqiandao capture --url` 抓小程序请求后 `api` 回放。
+- **地理位置表单字段(fill_options key=6)**：需要 `--lat/--lng`（可先 `geo geocode`），`sign` 会用 `fill_params:[{key:6,val,lat,lon}]` 提交。
+- 口令/扫码/WiFi/班级作业类：会返回对应 `NEED_*`，提示改用小程序或补充信息。
+
 ## 6. 普通网页表单（无接口）
 
 ```powershell
