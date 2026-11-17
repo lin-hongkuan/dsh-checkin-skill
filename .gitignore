@@ -1,0 +1,16 @@
+# dependencies
+node_modules/
+
+# local state / secrets (NEVER commit)
+state.json
+browsers.json
+tokens.json
+*.local.json
+.state/
+
+# runtime artifacts
+*.log
+*.png
+!docs/**/*.png
+.DS_Store
+Thumbs.db
