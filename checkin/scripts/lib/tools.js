@@ -80,7 +80,7 @@ export function buildTools({ ctx, config }) {
       const platforms = platformGuide(args.platform ? [args.platform] : undefined);
       return {
         ok: true,
-        persistence: persist ? 'credentials' : 'memory-only',
+        persistence: persist ? 'file' : 'memory-only',
         status,
         platforms,
         summary:

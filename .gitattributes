@@ -1,0 +1,4 @@
+# normalize line endings to LF for source files
+* text=auto eol=lf
+*.png binary
+*.jpg binary

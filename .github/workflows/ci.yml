@@ -1,0 +1,26 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax check (node --check)
+        run: |
+          set -e
+          find checkin/scripts -type f \( -name '*.js' -o -name '*.mjs' \) -print0 \
+            | while IFS= read -r -d '' f; do echo "check $f"; node --check "$f"; done
+      - name: CLI smoke
+        run: |
+          node checkin/scripts/checkin.mjs --version
+          node checkin/scripts/checkin.mjs guide > /dev/null
+          node checkin/scripts/checkin.mjs geo convert --lat 39.90923 --lng 116.397428 --from gcj02 --to wgs84 > /dev/null
+          # doctor depends on a local Chrome; informational only
+          node checkin/scripts/checkin.mjs doctor || true
